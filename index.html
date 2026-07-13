@@ -1,0 +1,1192 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Endless Runner – Laureles a Castilla</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #000; overflow: hidden; }
+    canvas { display: block; }
+
+    /* ── HUD superior ── */
+    #hud-top {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      padding: 10px 20px 6px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      pointer-events: none;
+      font-family: 'Courier New', monospace;
+    }
+
+    /* barra de progreso */
+    #route-bar-wrap {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      width: 100%;
+    }
+    .route-label {
+      color: #aaccff;
+      font-size: 12px;
+      white-space: nowrap;
+      text-shadow: 0 0 6px #4488ff;
+      letter-spacing: 1px;
+    }
+    #route-track {
+      flex: 1;
+      height: 14px;
+      background: #111a2a;
+      border: 1px solid #334466;
+      border-radius: 7px;
+      overflow: hidden;
+      position: relative;
+    }
+    #route-fill {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, #0055ff, #00ccff, #00ffaa);
+      border-radius: 7px;
+      transition: width 0.1s linear;
+      box-shadow: 0 0 8px #00ccff88;
+    }
+    #route-track::after {
+      content: '🏍';
+      position: absolute;
+      top: -3px;
+      left: var(--bike-pos, 0%);
+      transform: translateX(-50%);
+      font-size: 16px;
+      transition: left 0.1s linear;
+      filter: drop-shadow(0 0 4px #0ff);
+    }
+    #route-pct {
+      color: #00ffcc;
+      font-size: 12px;
+      min-width: 36px;
+      text-align: right;
+      text-shadow: 0 0 6px #00ffcc;
+    }
+
+    /* score + velocidad */
+    #ui {
+      display: flex;
+      justify-content: center;
+      gap: 30px;
+      color: #fff;
+      font-size: 18px;
+      text-shadow: 0 0 10px #0ff;
+      letter-spacing: 2px;
+    }
+    #score { font-size: 26px; font-weight: bold; color: #0ff; }
+
+    /* ── HUD munición ── */
+    #ammo-hud {
+      position: fixed;
+      bottom: 60px;
+      left: 20px;
+      font-family: 'Courier New', monospace;
+      pointer-events: none;
+    }
+    #ammo-icons {
+      display: flex;
+      gap: 5px;
+      margin-bottom: 4px;
+    }
+    .bullet-icon {
+      width: 10px;
+      height: 22px;
+      border-radius: 3px;
+      border: 1px solid #666;
+      transition: background 0.1s;
+    }
+    .bullet-icon.filled { background: #ffee00; box-shadow: 0 0 5px #ffee0099; }
+    .bullet-icon.spent  { background: #2a2a2a; border-color: #444; }
+    #ammo-count { font-size: 13px; color: #ffee00; text-shadow: 0 0 6px #ffee00; }
+    #ammo-status { font-size: 12px; margin-top: 4px; letter-spacing: 1px; }
+    .ammo-ready     { color: #00ff88; text-shadow: 0 0 6px #00ff88; }
+    .ammo-reloading { color: #ff8800; animation: blink-orange 0.5s infinite alternate; }
+    #ammo-coolbar-wrap {
+      width: 120px; height: 4px; background: #222;
+      border-radius: 2px; margin-top: 3px; overflow: hidden;
+    }
+    #ammo-coolbar { height: 100%; background: #00ff88; transition: width 0.05s linear; }
+
+    /* hint */
+    #hint {
+      position: fixed;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      color: #aaa;
+      font-family: 'Courier New', monospace;
+      font-size: 12px;
+      pointer-events: none;
+      text-align: center;
+      line-height: 1.8;
+    }
+
+    /* ── Overlays ── */
+    .overlay {
+      display: none;
+      position: fixed;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      text-align: center;
+      font-family: 'Courier New', monospace;
+      pointer-events: none;
+    }
+
+    /* Game Over */
+    #gameover h1 {
+      font-size: 56px;
+      color: #ff2244;
+      text-shadow: 0 0 20px #ff0033, 0 0 40px #ff0033;
+      letter-spacing: 6px;
+      animation: flicker 0.8s infinite alternate;
+    }
+    #gameover p  { font-size: 18px; color: #fff; margin-top: 12px; opacity: 0.8; }
+    #gameover .final-score {
+      font-size: 30px; color: #ffcc00; margin-top: 8px;
+      text-shadow: 0 0 10px #ffcc00;
+    }
+
+    /* Victoria */
+    #victory h1 {
+      font-size: 40px;
+      color: #00ffaa;
+      text-shadow: 0 0 20px #00ffaa, 0 0 40px #00ff88;
+      letter-spacing: 4px;
+      animation: pulse-green 1s infinite alternate;
+    }
+    #victory .sub    { font-size: 22px; color: #fff; margin-top: 10px; }
+    #victory .vscr   { font-size: 28px; color: #ffdd00; margin-top: 8px; text-shadow: 0 0 10px #ffdd00; }
+    #victory .detail { font-size: 15px; color: #aaffcc; margin-top: 6px; opacity: 0.85; }
+
+    /* Botón compartido */
+    .action-btn {
+      display: none;
+      position: fixed;
+      top: calc(50% + 130px); left: 50%;
+      transform: translateX(-50%);
+      padding: 12px 36px;
+      font-family: 'Courier New', monospace;
+      font-size: 18px;
+      letter-spacing: 3px;
+      background: transparent;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    #restart-btn { border: 2px solid #ff2244; color: #ff2244; text-shadow: 0 0 8px #ff2244; box-shadow: 0 0 12px #ff224466; }
+    #restart-btn:hover { background: #ff224433; }
+    #newgame-btn  { border: 2px solid #00ffaa; color: #00ffaa; text-shadow: 0 0 8px #00ffaa; box-shadow: 0 0 12px #00ffaa44; }
+    #newgame-btn:hover { background: #00ffaa22; }
+
+    /* flash de impacto */
+    #flash {
+      position: fixed; inset: 0;
+      background: #ffff0033;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.08s;
+    }
+
+    /* ── Transición de nivel ── */
+    #level-up {
+      display: none; position: fixed;
+      top: 80px; left: 50%; transform: translateX(-50%);
+      text-align: center; font-family: 'Courier New', monospace;
+      pointer-events: none; z-index: 100;
+    }
+    #level-up h2 {
+      font-size: 38px; color: #ffdd00; letter-spacing: 4px;
+      animation: pulse-yellow 0.7s infinite alternate;
+    }
+    #level-up .lv-sub { font-size: 16px; color: #00ffcc; margin-top: 8px; letter-spacing: 1px; }
+    @keyframes pulse-yellow {
+      from { text-shadow: 0 0 12px #ffaa00; }
+      to   { text-shadow: 0 0 35px #ff8800, 0 0 65px #ffdd00; }
+    }
+
+    @keyframes flicker {
+      0%{opacity:1}60%{opacity:1}65%{opacity:0.4}70%{opacity:1}90%{opacity:1}95%{opacity:0.6}100%{opacity:1}
+    }
+    @keyframes pulse-green {
+      from { text-shadow: 0 0 10px #00ffaa; }
+      to   { text-shadow: 0 0 30px #00ff88, 0 0 60px #00ffaa; }
+    }
+    @keyframes blink-orange {
+      from { opacity: 1; }
+      to   { opacity: 0.4; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- HUD superior -->
+  <div id="hud-top">
+    <div id="route-bar-wrap">
+      <span class="route-label" id="label-from">LAURELES</span>
+      <div id="route-track" style="--bike-pos:0%">
+        <div id="route-fill"></div>
+      </div>
+      <span class="route-label" id="label-to">CASTILLA</span>
+      <span id="route-pct">0%</span>
+    </div>
+    <div id="ui">
+      <div id="score">00000</div>
+      <div>VELOCIDAD: <span id="speed">100</span> km/h</div>
+    </div>
+  </div>
+
+  <!-- HUD munición -->
+  <div id="ammo-hud">
+    <div id="ammo-icons">
+      <div class="bullet-icon filled"></div>
+      <div class="bullet-icon filled"></div>
+      <div class="bullet-icon filled"></div>
+      <div class="bullet-icon filled"></div>
+      <div class="bullet-icon filled"></div>
+    </div>
+    <div id="ammo-count">5</div>
+    <div id="ammo-status" class="ammo-ready">● LISTO</div>
+    <div id="ammo-coolbar-wrap"><div id="ammo-coolbar" style="width:100%"></div></div>
+  </div>
+
+  <div id="hint">
+    [ A / D ] Mover &nbsp;|&nbsp; [ SHIFT+A/D ] Contramanillar &nbsp;|&nbsp; [ ESPACIO ] Disparar &nbsp;|&nbsp; [ R ] Recargar
+  </div>
+
+  <!-- Overlays -->
+  <div id="gameover" class="overlay">
+    <h1>GAME OVER</h1>
+    <p>Chocaste en la ruta <span id="crash-route">Laureles → Castilla</span></p>
+    <div class="final-score">PUNTAJE: <span id="final-score-val">0</span></div>
+  </div>
+
+  <div id="victory" class="overlay">
+    <h1 id="victory-title">¡ENTREGA EXITOSA EN CASTILLA!</h1>
+    <div class="sub" id="victory-sub">Completaste la ruta Laureles → Castilla</div>
+    <div class="vscr">PUNTAJE FINAL: <span id="victory-score-val">0</span></div>
+    <div class="detail">Demonios eliminados: <span id="demons-killed">0</span></div>
+  </div>
+
+  <button id="restart-btn" class="action-btn">[ REINICIAR ]</button>
+  <button id="newgame-btn" class="action-btn">[ JUGAR DE NUEVO ]</button>
+
+  <div id="level-up">
+    <h2 id="lvl-title">¡NIVEL 1 COMPLETADO!</h2>
+    <div class="lv-sub" id="lvl-sub">Próximo tramo: Castilla → La Estrella</div>
+  </div>
+  <div id="loading" style="position:fixed;inset:0;background:#000;z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:'Courier New',monospace;color:#00ffcc;font-size:22px;letter-spacing:4px;gap:18px;">
+    <div>CARGANDO MODELOS...</div>
+    <div style="width:220px;height:4px;background:#112233;border-radius:2px;overflow:hidden"><div id="load-bar" style="width:0%;height:100%;background:#00ffcc;transition:width 0.3s"></div></div>
+  </div>
+  <div id="flash"></div>
+
+  <script type="importmap">
+    { "imports": {
+      "three":         "https://unpkg.com/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+    }}
+  </script>
+
+  <script type="module">
+    import * as THREE from 'three';
+    import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+
+    /* ════ Variables de calibración de modelos ════ */
+    const MOTO_SCALE     = 1.0;
+    const MOTO_ROT_Y     = Math.PI;
+    const MOTO_OFFSET_Y  = 0;
+    const CACODEMON_SCALE    = 1.0;
+    const CACODEMON_ROT_Y    = Math.PI;
+    const CACODEMON_OFFSET_Y = 0;
+    const CAR_SCALE    = 1.0;
+    const CAR_ROT_Y    = 0;
+    const CAR_OFFSET_Y = 0.8;
+    const RAMP_SCALE    = 3.0;
+    const RAMP_ROT_Y    = 0;
+    const RAMP_OFFSET_Y = 0;
+
+    /* ════ Renderer ════ */
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    document.body.appendChild(renderer.domElement);
+
+    /* ════ Scene ════ */
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x87ceeb); /* Azul cielo de fallback hasta que cargue la textura */
+    /* Nivel 1: sin niebla — día soleado y despejado (la niebla se activa al entrar al nivel 2) */
+
+    /* ════ Camera ════ */
+    const camera = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, 0.1, 200);
+    camera.position.set(0, 8, 10);
+    camera.lookAt(0, 0, -5);
+
+    /* ════ Iluminación solar — Nivel 1 día soleado ════ */
+    scene.add(new THREE.AmbientLight(0xfff4dd, 2.2)); /* Cálida y brillante, sombras suaves */
+    const sun = new THREE.DirectionalLight(0xfffbe0, 5); /* Sol potente, tono amarillo cálido */
+    sun.position.set(5, 10, 5);
+    sun.castShadow = true;
+    sun.shadow.mapSize.set(2048, 2048);
+    Object.assign(sun.shadow.camera, { near:0.5, far:100, left:-20, right:20, top:20, bottom:-20 });
+    scene.add(sun);
+    const neon = new THREE.PointLight(0x00ffff, 3, 20);
+    neon.position.set(0, 1, 0);
+    scene.add(neon);
+
+    /* ════ Textura carretera ════ */
+    function makeRoadTexture() {
+      const W=512, H=1024, cv=document.createElement('canvas');
+      cv.width=W; cv.height=H;
+      const c=cv.getContext('2d');
+      c.fillStyle='#1a1a1a'; c.fillRect(0,0,W,H);
+      c.strokeStyle='#fff'; c.lineWidth=8;
+      c.beginPath(); c.moveTo(40,0);   c.lineTo(40,H);   c.stroke();
+      c.beginPath(); c.moveTo(W-40,0); c.lineTo(W-40,H); c.stroke();
+      c.strokeStyle='#ffff00'; c.lineWidth=5; c.setLineDash([80,60]);
+      c.beginPath(); c.moveTo(W/2,0);  c.lineTo(W/2,H);  c.stroke();
+      c.setLineDash([]);
+      c.strokeStyle='rgba(255,255,255,0.25)'; c.lineWidth=3;
+      [W*0.33,W*0.66].forEach(x=>{ c.setLineDash([40,80]); c.beginPath(); c.moveTo(x,0); c.lineTo(x,H); c.stroke(); });
+      c.setLineDash([]);
+      const t=new THREE.CanvasTexture(cv);
+      t.wrapS=t.wrapT=THREE.RepeatWrapping; t.repeat.set(1,4); return t;
+    }
+    const roadTex = makeRoadTexture();
+    const ROAD_SEGMENTS=6, SEG_LENGTH=20;
+    const roadMat = new THREE.MeshLambertMaterial({ map: roadTex });
+    const roadSegments = [];
+    for(let i=0;i<ROAD_SEGMENTS;i++){
+      const m=new THREE.Mesh(new THREE.PlaneGeometry(10,SEG_LENGTH),roadMat);
+      m.rotation.x=-Math.PI/2; m.position.z=-i*SEG_LENGTH; m.receiveShadow=true;
+      scene.add(m); roadSegments.push(m);
+    }
+    const barrierMat=new THREE.MeshLambertMaterial({color:0x334455});
+    [-5.5,5.5].forEach(x=>{
+      const m=new THREE.Mesh(new THREE.BoxGeometry(0.3,0.8,ROAD_SEGMENTS*SEG_LENGTH*2),barrierMat);
+      m.position.set(x,0.4,-ROAD_SEGMENTS*SEG_LENGTH/2); m.receiveShadow=true; scene.add(m);
+    });
+
+    /* ════ Estrellas (ocultas en el día; visibles solo si se necesitan en nivel 2) ════ */
+    const sv=[]; for(let i=0;i<800;i++) sv.push((Math.random()-0.5)*200,Math.random()*60+5,(Math.random()-0.5)*200);
+    const sg=new THREE.BufferGeometry(); sg.setAttribute('position',new THREE.Float32BufferAttribute(sv,3));
+    const stars=new THREE.Points(sg,new THREE.PointsMaterial({color:0xffffff,size:0.15}));
+    stars.visible=false;
+    scene.add(stars);
+
+    /* ════ Lluvia — partículas nivel 2 ════ */
+    const RAIN_COUNT=3500;
+    const rainPos=new Float32Array(RAIN_COUNT*3);
+    for(let i=0;i<RAIN_COUNT;i++){
+      rainPos[i*3]  =(Math.random()-0.5)*50;
+      rainPos[i*3+1]=Math.random()*30;
+      rainPos[i*3+2]=(Math.random()-0.5)*60-10;
+    }
+    const rainGeo=new THREE.BufferGeometry();
+    rainGeo.setAttribute('position',new THREE.BufferAttribute(rainPos,3));
+    const rainMat=new THREE.PointsMaterial({color:0xaaccff,size:0.12,transparent:true,opacity:0.65,sizeAttenuation:true,depthWrite:false});
+    const rain=new THREE.Points(rainGeo,rainMat);
+    rain.visible=false;
+    scene.add(rain);
+
+    /* ════ Jugador ════ */
+    const playerMat=new THREE.MeshPhongMaterial({color:0x00ccff,emissive:0x003344,shininess:120,specular:0x00ffff});
+    const player=new THREE.Group();
+    player.position.set(0,0.5,0); scene.add(player);
+    const _playerPH=new THREE.Mesh(new THREE.BoxGeometry(1,1,1),playerMat);
+    _playerPH.castShadow=true; player.add(_playerPH);
+    const wheelMat=new THREE.MeshPhongMaterial({color:0x111111});
+    [[-0.45,0,0.35],[0.45,0,0.35],[-0.45,0,-0.35],[0.45,0,-0.35]].forEach(([x,y,z])=>{
+      const w=new THREE.Mesh(new THREE.CylinderGeometry(0.18,0.18,0.12,12),wheelMat);
+      w.castShadow=true; w.rotation.z=Math.PI/2; w.position.set(x,y,z); _playerPH.add(w);
+    });
+    const playerBox=new THREE.Box3();
+
+    /* ════ Carros ════ */
+    const carMat=new THREE.MeshPhongMaterial({color:0xff2222,emissive:0x330000,shininess:80,specular:0xff6666});
+    let redCarTemplate=null;
+    function makeCar(){
+      const g=new THREE.Group();
+      if(redCarTemplate){
+        const model=redCarTemplate.clone(true);
+        model.scale.setScalar(CAR_SCALE);
+        model.rotation.y=CAR_ROT_Y;
+        model.position.y=CAR_OFFSET_Y;
+        model.traverse(c=>{ if(c.isMesh){ c.castShadow=true; c.receiveShadow=true; } });
+        g.add(model);
+      } else {
+        const b=new THREE.Mesh(new THREE.BoxGeometry(1.4,0.8,2.4),carMat);
+        b.position.y=0.4; b.castShadow=true; g.add(b);
+      }
+      const tl=new THREE.PointLight(0xff2200,2,4); tl.position.set(0,0.5,1.2); g.add(tl);
+      return g;
+    }
+    const LANES=[-3,0,3], SPAWN_Z=-55, DESPAWN_Z=15;
+    const cars=[], carPool=[];
+    let carSpawnTimer=0, carSpawnInterval=2.0;
+    function spawnCar(){
+      let c; if(carPool.length>0){c=carPool.pop();c.mesh.visible=true;}
+      else{c={mesh:makeCar(),box:new THREE.Box3()};scene.add(c.mesh);}
+      c.mesh.position.set(LANES[Math.floor(Math.random()*LANES.length)],0,SPAWN_Z);
+      c.mesh.rotation.z=0;
+      const ud=c.mesh.userData;
+      ud.xSpeed   =(Math.random()<0.5?1:-1)*(1.5+Math.random()*2.5);
+      ud.isMoving =Math.random()<0.6;
+      ud.stateTimer=ud.isMoving?1.0+Math.random()*2.0:0.4+Math.random()*1.4;
+      cars.push(c);
+    }
+
+    /* ════ Rampas ════ */
+    const rampMat=new THREE.MeshPhongMaterial({color:0x00ffaa,emissive:0x003322,shininess:90});
+    let loadedRampModel=null;
+    let skyboxTexture=null;       /* cielo soleado Nivel 1, cargado en loadAssets() */
+    let skyboxLevel2Texture=null; /* cielo Nivel 2, cargado en loadAssets() */
+    function makeRamp(){
+      const g=new THREE.Group();
+      if(loadedRampModel){
+        const model=loadedRampModel.clone(true);
+        model.scale.set(RAMP_SCALE,RAMP_SCALE,RAMP_SCALE);
+        model.rotation.y=RAMP_ROT_Y;
+        model.position.y=RAMP_OFFSET_Y;
+        model.traverse(c=>{ if(c.isMesh){ c.castShadow=true; c.receiveShadow=true; } });
+        g.add(model);
+      } else {
+        const body=new THREE.Mesh(new THREE.BoxGeometry(3.8,0.45,2.6),rampMat);
+        body.rotation.x=-0.35; body.position.y=0.22; body.castShadow=true;
+        g.add(body);
+      }
+      const gl=new THREE.PointLight(0x00ffaa,2.5,5); gl.position.set(0,0.5,0); g.add(gl);
+      return g;
+    }
+    const ramps=[], rampPool=[];
+    let rampSpawnTimer=0, rampSpawnInterval=12;
+    function spawnRamp(){
+      if(isJumping) return;
+      let r; if(rampPool.length>0){r=rampPool.pop();r.mesh.visible=true;}
+      else{r={mesh:makeRamp(),box:new THREE.Box3()};scene.add(r.mesh);}
+      r.mesh.position.set(LANES[Math.floor(Math.random()*LANES.length)],0,SPAWN_Z);
+      ramps.push(r);
+    }
+
+    /* ════ Demonios aéreos — Cacodemon ════ */
+    const demonMat=new THREE.MeshPhongMaterial({color:0xff1122,emissive:0x440000,shininess:100,specular:0xff4444,transparent:true,opacity:1.0});
+    let cacodemonTemplate=null;
+    function makeDemon(){
+      const g=new THREE.Group();
+      if(cacodemonTemplate){
+        const model=cacodemonTemplate.clone(true);
+        model.scale.setScalar(CACODEMON_SCALE);
+        model.rotation.y=CACODEMON_ROT_Y;
+        model.position.y=CACODEMON_OFFSET_Y;
+        model.traverse(c=>{ if(c.isMesh){ c.castShadow=true; c.material=c.material.clone(); c.material.transparent=true; c.material.opacity=1.0; } });
+        g.add(model);
+      } else {
+        const s=new THREE.Mesh(new THREE.SphereGeometry(0.55,16,12),demonMat.clone());
+        s.castShadow=true; g.add(s);
+      }
+      const h=new THREE.PointLight(0xff0000,2.5,6); g.add(h); g.userData.halo=h;
+      return g;
+    }
+    const demons=[], demonPool=[], dyingDemons=[];
+    let demonSpawnTimer=0, demonSpawnInterval=4.0;
+
+    function spawnDemon(){
+      let d; if(demonPool.length>0){d=demonPool.pop();d.mesh.visible=true;}
+      else{d={mesh:makeDemon(),box:new THREE.Box3()};scene.add(d.mesh);}
+      const sx=( Math.random()-0.5)*6;
+      const sy=2.5+Math.random()*2.0;
+      d.mesh.position.set(sx,sy,SPAWN_Z);
+      d.mesh.rotation.set(0,0,0);
+      d.mesh.scale.setScalar(1);
+      d.mesh.traverse(c=>{ if(c.isMesh) c.material.opacity=1.0; });
+      const ud=d.mesh.userData;
+      ud.state         ='PATROL';
+      ud.age           =0;
+      ud.phase         =Math.random()*Math.PI*2;
+      ud.baseX         =sx;
+      ud.baseY         =sy;
+      ud.chargeDir     =new THREE.Vector3(0,0,1);
+      ud.chargeTimer   =0;
+      ud.cooldownTimer =0;
+      ud.cooldownBaseX =sx;
+      ud.cooldownBaseY =sy;
+      demons.push(d);
+    }
+
+    function recycleEnemy(d, idx) {
+      d.mesh.visible=false;
+      d.mesh.position.set(0,-100,0);
+      demonPool.push(d);
+      demons.splice(idx,1);
+    }
+
+    function killEnemy(d, j) {
+      demons.splice(j,1);
+      const ud=d.mesh.userData;
+      ud.deathProgress=0;
+      ud.deathDuration=0.5;
+      d.mesh.traverse(c=>{ if(c.isMesh){ c.material.transparent=true; c.material.opacity=1.0; } });
+      d.mesh.scale.setScalar(1);
+      dyingDemons.push(d);
+      score        +=100;
+      demonsKilled +=1;
+    }
+
+    /* ════════════════════════════════════════
+       SISTEMA DE DISPARO
+       ════════════════════════════════════════ */
+    const bulletMat=new THREE.MeshPhongMaterial({color:0xffee00,emissive:0x885500,shininess:200,specular:0xffff88});
+    const bulletGeo=new THREE.CylinderGeometry(0.08,0.08,0.5,8);
+    const bullets=[], bulletPool=[];
+    const BULLET_SPEED  =40;
+    const BULLET_LIFE   =2.5;
+    const SHOT_COOLDOWN =1.0;
+    const MAX_AMMO      =5;
+    const DETECT_RADIUS =9;
+    const STEER_STRENGTH=3.5;
+    const _toTarget=new THREE.Vector3();
+    const _cylUp   =new THREE.Vector3(0,1,0);
+    let ammo=MAX_AMMO, shotCooldown=0;
+    const flashEl=document.getElementById('flash');
+
+    const ammoCountEl   =document.getElementById('ammo-count');
+    const bulletIconEls =[...document.querySelectorAll('.bullet-icon')];
+    const ammoStatusEl  =document.getElementById('ammo-status');
+    const ammoCoolbarEl =document.getElementById('ammo-coolbar');
+
+    function updateAmmoHUD(){
+      ammoCountEl.textContent=ammo;
+      bulletIconEls.forEach((el,i)=>{
+        el.className='bullet-icon '+(i<ammo?'filled':'spent');
+      });
+      if(shotCooldown>0){
+        if(ammo===0){
+          ammoStatusEl.textContent='RECARGANDO ARMA...';
+          ammoStatusEl.className='ammo-reloading';
+          ammoCoolbarEl.style.background='#ff8800';
+        } else {
+          ammoStatusEl.textContent='● LISTO';
+          ammoStatusEl.className='ammo-ready';
+          ammoCoolbarEl.style.background='#00ff88';
+        }
+        const pct=((SHOT_COOLDOWN-shotCooldown)/SHOT_COOLDOWN)*100;
+        ammoCoolbarEl.style.width=pct+'%';
+      } else {
+        ammoStatusEl.textContent='● LISTO';
+        ammoStatusEl.className='ammo-ready';
+        ammoCoolbarEl.style.width='100%';
+        ammoCoolbarEl.style.background='#00ff88';
+      }
+    }
+
+    function spawnBullet(){
+      let b;
+      if(bulletPool.length>0){b=bulletPool.pop();b.mesh.visible=true;}
+      else{
+        const m=new THREE.Mesh(bulletGeo,bulletMat);
+        const glow=new THREE.PointLight(0xffdd00,3,3);
+        m.add(glow);
+        b={mesh:m,glow:glow,box:new THREE.Box3(),dir:new THREE.Vector3(0,0,-1),isHoming:false,life:0};
+        scene.add(m);
+      }
+      b.mesh.position.set(player.position.x,2.0,player.position.z-1.2);
+      b.dir.set(0,0,-1);
+      b.isHoming=false;
+      b.glow.color.setHex(0xffdd00);
+      b.glow.intensity=3;
+      b.life=0;
+      b.mesh.visible=true;
+      bullets.push(b);
+    }
+
+    /* ════ Niveles y progresión ════ */
+    const levels=[
+      { id:1, from:'LAURELES', to:'CASTILLA',    speedMult:1.0, speedMax:26, speedAccel:0.30, carInterval:2.0, demonInterval:4.0, duration:90 },
+      { id:2, from:'CASTILLA', to:'LA ESTRELLA', speedMult:1.8, speedMax:45, speedAccel:0.55, carInterval:1.2, demonInterval:2.5, duration:70 },
+    ];
+    const BASE_GAME_SPEED=12;
+    let currentLevelIdx=0, levelCfg=levels[0], levelTransitioning=false;
+
+    let routeProgress=0, demonsKilled=0;
+    const routeFill   =document.getElementById('route-fill');
+    const routePct    =document.getElementById('route-pct');
+    const routeTrack  =document.getElementById('route-track');
+    const labelFromEl =document.getElementById('label-from');
+    const labelToEl   =document.getElementById('label-to');
+    const levelUpEl   =document.getElementById('level-up');
+    const lvlTitleEl  =document.getElementById('lvl-title');
+    const lvlSubEl    =document.getElementById('lvl-sub');
+
+    function updateRouteBar(p){
+      const pct=(p*100).toFixed(1);
+      routeFill.style.width=pct+'%';
+      routePct.textContent=Math.floor(p*100)+'%';
+      routeTrack.style.setProperty('--bike-pos',pct+'%');
+    }
+    function applyLevelConfig(){
+      labelFromEl.textContent=levelCfg.from;
+      labelToEl.textContent  =levelCfg.to;
+    }
+
+    /* ════ Marcadores de barrios (Nivel 2) ════ */
+    const barrioMilestones=[
+      {progress:0.25, name:'La Candelaria', shown:false},
+      {progress:0.50, name:'El Poblado',    shown:false},
+      {progress:0.75, name:'Sabaneta',      shown:false},
+      {progress:0.90, name:'Itagüí',        shown:false},
+    ];
+    const barrioSigns=[];
+
+    function makeBarrioTex(name){
+      const cv=document.createElement('canvas'); cv.width=512; cv.height=128;
+      const ctx=cv.getContext('2d');
+      ctx.fillStyle='#1a3a6a'; ctx.fillRect(0,0,512,128);
+      ctx.strokeStyle='#fff'; ctx.lineWidth=5; ctx.strokeRect(5,5,502,118);
+      ctx.fillStyle='#ffdd00'; ctx.font='bold 54px Arial';
+      ctx.textAlign='center'; ctx.textBaseline='middle';
+      ctx.fillText(name,256,64);
+      return new THREE.CanvasTexture(cv);
+    }
+    function spawnBarrioSign(name){
+      const g=new THREE.Group();
+      const board=new THREE.Mesh(
+        new THREE.PlaneGeometry(4.5,1.2),
+        new THREE.MeshBasicMaterial({map:makeBarrioTex(name),side:THREE.DoubleSide})
+      );
+      board.position.y=2.8; g.add(board);
+      const post=new THREE.Mesh(
+        new THREE.CylinderGeometry(0.07,0.07,2.8,8),
+        new THREE.MeshLambertMaterial({color:0x777788})
+      );
+      post.position.y=1.0; g.add(post);
+      const side=(Math.random()<0.5?-1:1)*7;
+      g.position.set(side,0,-30);
+      scene.add(g);
+      barrioSigns.push(g);
+    }
+    function resetBarrioSigns(){
+      barrioSigns.forEach(s=>scene.remove(s));
+      barrioSigns.length=0;
+      barrioMilestones.forEach(m=>{m.shown=false;});
+    }
+
+    /* ════ Constantes IA demonio ════ */
+    const DEMON_AGGRO_RADIUS=38;
+    const CHARGE_DURATION   =2.0;
+    const MISS_COOLDOWN     =3.0;
+
+    /* ════ Estado general ════ */
+    const keys={a:false,d:false,space:false,shift:false};
+    document.addEventListener('keydown',e=>{
+      if(e.key==='a'||e.key==='A')          keys.a    =true;
+      if(e.key==='d'||e.key==='D')          keys.d    =true;
+      if(e.key===' '){e.preventDefault();   keys.space=true;}
+      if(e.key==='Shift')                   keys.shift=true;
+      if(e.key==='r'||e.key==='R'){
+        if(gameOver||gameWon) resetGame();
+        else { ammo=MAX_AMMO; shotCooldown=0; updateAmmoHUD(); }
+      }
+    });
+    document.addEventListener('keyup',e=>{
+      if(e.key==='a'||e.key==='A') keys.a    =false;
+      if(e.key==='d'||e.key==='D') keys.d    =false;
+      if(e.key===' ')              keys.space =false;
+      if(e.key==='Shift')          keys.shift =false;
+    });
+    document.getElementById('restart-btn').addEventListener('click',resetGame);
+    document.getElementById('newgame-btn').addEventListener('click',resetGame);
+
+    const ROAD_HALF=4, PLAYER_SPEED=5;
+    let roadOffset=0,score=0,gameSpeed=BASE_GAME_SPEED;
+    let gameOver=false,gameWon=false,crashShake=0;
+    const clock=new THREE.Clock();
+
+    /* ════ Rampas y salto ════ */
+    const PLAYER_GROUND_Y  = 0.5;
+    const JUMP_INITIAL_VEL = 11;
+    const JUMP_GRAVITY     = 24;
+    const TURBO_MULT       = 1.5;
+    const TURBO_DECAY_RATE = 6;
+    let isJumping  = false;
+    let jumpVelY   = 0;
+    let turboBoost = 0;
+    const CAM_BASE_Y = 8,  CAM_BASE_Z = 10;
+    const CAM_JUMP_Y = 5,  CAM_JUMP_Z = 6.5;
+    let camTargetY = CAM_BASE_Y, camTargetZ = CAM_BASE_Z;
+
+    /* ════ Game Over ════ */
+    function triggerGameOver(){
+      if(gameOver||gameWon) return;
+      gameOver=true; crashShake=40;
+      scene.fog=new THREE.Fog(0x220000,15,50);
+      document.getElementById('crash-route').textContent=`${levelCfg.from} → ${levelCfg.to}`;
+      document.getElementById('gameover').style.display='block';
+      document.getElementById('restart-btn').style.display='block';
+      document.getElementById('final-score-val').textContent=Math.floor(score);
+    }
+
+    /* ════ Victoria ════ */
+    function triggerVictory(){
+      gameWon=true;
+      scene.fog=new THREE.Fog(0x002211,25,90);
+      document.getElementById('victory-title').textContent=`¡ENTREGA EXITOSA EN ${levelCfg.to}!`;
+      document.getElementById('victory-sub').textContent=`Completaste la ruta ${levelCfg.from} → ${levelCfg.to}`;
+      document.getElementById('victory').style.display='block';
+      document.getElementById('newgame-btn').style.display='block';
+      document.getElementById('victory-score-val').textContent=Math.floor(score);
+      document.getElementById('demons-killed').textContent=demonsKilled;
+    }
+
+    /* ════ Transición de nivel ════ */
+    function transitionLevel(){
+      levelTransitioning=true;
+      const next=levels[currentLevelIdx+1];
+      lvlTitleEl.textContent=`¡NIVEL ${levelCfg.id} COMPLETADO!`;
+      lvlSubEl.textContent  =`Próximo tramo: ${next.from} → ${next.to}`;
+      levelUpEl.style.display='block';
+      flashEl.style.background='#00ff8855';
+      flashEl.style.opacity='1';
+      setTimeout(()=>{ flashEl.style.opacity='0'; setTimeout(()=>{ flashEl.style.background='#ffff0033'; },150); },250);
+      setTimeout(()=>{
+        levelUpEl.style.display='none';
+        currentLevelIdx++;
+        levelCfg=levels[currentLevelIdx];
+        routeProgress=0;
+        updateRouteBar(0);
+        applyLevelConfig();
+        gameSpeed=Math.max(gameSpeed, BASE_GAME_SPEED*levelCfg.speedMult);
+        carSpawnInterval  =levelCfg.carInterval;
+        demonSpawnInterval=levelCfg.demonInterval;
+        carSpawnTimer=0; demonSpawnTimer=0;
+        levelTransitioning=false;
+        /* Atmósfera Nivel 2: lluvia y cielo de la textura cielo-nivel2.jpg */
+        rain.visible=true;
+        stars.visible=false;
+        scene.fog=new THREE.FogExp2(0x4a5a6a,0.018);
+        if(skyboxLevel2Texture) scene.background=skyboxLevel2Texture;
+        else scene.background=new THREE.Color(0x888888);
+        barrioMilestones.forEach(m=>{m.shown=false;});
+      },3000);
+    }
+
+    /* ════ Reset ════ */
+    function resetGame(){
+      [...cars,...bullets].forEach(o=>{o.mesh.visible=false;});
+      demons.forEach(d=>{d.mesh.visible=false;d.mesh.position.set(0,-100,0);demonPool.push(d);});
+      dyingDemons.forEach(d=>{
+        d.mesh.scale.setScalar(1);
+        d.mesh.traverse(c=>{ if(c.isMesh) c.material.opacity=1.0; });
+        d.mesh.visible=false;
+        d.mesh.position.set(0,-100,0);
+        demonPool.push(d);
+      });
+      cars.length=0;demons.length=0;bullets.length=0;dyingDemons.length=0;
+      ramps.forEach(r=>{r.mesh.visible=false;r.mesh.position.set(0,-100,0);rampPool.push(r);});
+      ramps.length=0; rampPool.length=0;
+      carPool.length=0;bulletPool.length=0;
+      isJumping=false; jumpVelY=0; turboBoost=0;
+      camTargetY=CAM_BASE_Y; camTargetZ=CAM_BASE_Z;
+      camera.position.set(0,CAM_BASE_Y,CAM_BASE_Z);
+      rampSpawnTimer=0; rampSpawnInterval=12;
+      player.position.set(0,PLAYER_GROUND_Y,0);player.rotation.set(0,0,0);
+      currentLevelIdx=0;levelCfg=levels[0];levelTransitioning=false;
+      applyLevelConfig();
+      levelUpEl.style.display='none';
+      roadOffset=0;score=0;gameSpeed=BASE_GAME_SPEED;
+      carSpawnInterval=levelCfg.carInterval;demonSpawnInterval=levelCfg.demonInterval;
+      roadSegments.forEach((s,i)=>{s.position.z=-i*SEG_LENGTH;});
+      gameOver=false;gameWon=false;crashShake=0;
+      carSpawnTimer=0;demonSpawnTimer=0;ammo=MAX_AMMO;shotCooldown=0;updateAmmoHUD();
+      routeProgress=0;demonsKilled=0;
+      updateRouteBar(0);
+      /* Restaurar atmósfera Nivel 1: día soleado, sin niebla */
+      scene.fog=null;
+      if(skyboxTexture) scene.background=skyboxTexture;
+      else scene.background=new THREE.Color(0x87ceeb);
+      rain.visible=false;
+      stars.visible=false;
+      resetBarrioSigns();
+      document.getElementById('gameover').style.display='none';
+      document.getElementById('victory').style.display='none';
+      document.getElementById('restart-btn').style.display='none';
+      document.getElementById('newgame-btn').style.display='none';
+    }
+
+    /* ════ Flash disparo ════ */
+    function triggerFlash(){
+      flashEl.style.opacity='1';
+      setTimeout(()=>flashEl.style.opacity='0',80);
+    }
+
+    /* ════════════════════════════════════════
+       Loop principal
+       ════════════════════════════════════════ */
+    function animate(){
+      requestAnimationFrame(animate);
+      const dt=Math.min(clock.getDelta(),0.05);
+
+      if(!gameOver&&!gameWon){
+
+        if(turboBoost>0) turboBoost=Math.max(0,turboBoost-dt*TURBO_DECAY_RATE);
+        gameSpeed=Math.min(levelCfg.speedMax+turboBoost, gameSpeed+dt*levelCfg.speedAccel);
+
+        /* ── Movimiento lateral + Contramanillar (SHIFT) ── */
+        const contramanillar=keys.shift;
+        const moveSpeed=PLAYER_SPEED*(contramanillar?2:1);
+        if(keys.a) player.position.x=Math.max(-ROAD_HALF,player.position.x-moveSpeed*dt);
+        if(keys.d) player.position.x=Math.min( ROAD_HALF,player.position.x+moveSpeed*dt);
+        const MAX_LEAN  =Math.PI/4;
+        const leanAmount=contramanillar?MAX_LEAN:0.18;
+        const targetLean=keys.a?leanAmount:keys.d?-leanAmount:0;
+        player.rotation.z+=(targetLean-player.rotation.z)*0.13;
+
+        /* ── Física de salto ── */
+        if(isJumping){
+          player.position.y+=jumpVelY*dt;
+          jumpVelY-=JUMP_GRAVITY*dt;
+          player.rotation.x=THREE.MathUtils.clamp(jumpVelY*0.015,-0.3,0.3);
+          if(player.position.y<=PLAYER_GROUND_Y&&jumpVelY<0){
+            player.position.y=PLAYER_GROUND_Y; player.rotation.x=0;
+            isJumping=false; jumpVelY=0;
+          }
+          camTargetY=CAM_JUMP_Y; camTargetZ=CAM_JUMP_Z;
+        } else {
+          player.position.y=PLAYER_GROUND_Y;
+          camTargetY=CAM_BASE_Y; camTargetZ=CAM_BASE_Z;
+        }
+
+        /* ── Disparo con gestión de munición ── */
+        shotCooldown=Math.max(0,shotCooldown-dt);
+        if(keys.space&&shotCooldown===0&&ammo>0){
+          spawnBullet();
+          ammo--;
+          shotCooldown=SHOT_COOLDOWN;
+          updateAmmoHUD();
+        }
+        if(ammo===0&&shotCooldown===0){
+          ammo=MAX_AMMO;
+          updateAmmoHUD();
+        }
+
+        /* ── Carretera ── */
+        roadOffset+=gameSpeed*dt;
+        roadTex.offset.y=(roadOffset*0.02)%1;
+        const recycleZ=ROAD_SEGMENTS*SEG_LENGTH;
+        roadSegments.forEach(s=>{
+          s.position.z+=gameSpeed*dt;
+          if(s.position.z>SEG_LENGTH) s.position.z-=recycleZ;
+        });
+
+        camera.position.x+=(player.position.x-camera.position.x)*0.08;
+        camera.position.y+=(camTargetY-camera.position.y)*0.07;
+        camera.position.z+=(camTargetZ-camera.position.z)*0.07;
+        neon.position.x=player.position.x;
+
+        /* spawn */
+        carSpawnTimer  +=dt; if(carSpawnTimer  >=carSpawnInterval)   {spawnCar();   carSpawnTimer=0;}
+        demonSpawnTimer+=dt; if(demonSpawnTimer>=demonSpawnInterval) {spawnDemon(); demonSpawnTimer=0;}
+        rampSpawnTimer +=dt; if(rampSpawnTimer >=rampSpawnInterval)  {spawnRamp();  rampSpawnTimer=0; rampSpawnInterval=8+Math.random()*7;}
+
+        playerBox.setFromObject(player);
+
+        /* ── Balas (steering behavior) ── */
+        for(let i=bullets.length-1;i>=0;i--){
+          const b=bullets[i];
+          b.life+=dt;
+          if(b.life>BULLET_LIFE||b.mesh.position.z<SPAWN_Z){
+            b.mesh.visible=false;bulletPool.push(b);bullets.splice(i,1);continue;
+          }
+          let nearest=null,nearestDist=DETECT_RADIUS;
+          for(const d of demons){
+            const dist=b.mesh.position.distanceTo(d.mesh.position);
+            if(dist<nearestDist){nearestDist=dist;nearest=d;}
+          }
+          if(nearest){
+            _toTarget.subVectors(nearest.mesh.position,b.mesh.position).normalize();
+            b.dir.lerp(_toTarget,STEER_STRENGTH*dt).normalize();
+            if(!b.isHoming){b.isHoming=true;b.glow.color.setHex(0xff6600);b.glow.intensity=6;}
+          } else {
+            if(b.isHoming){b.isHoming=false;b.glow.color.setHex(0xffdd00);b.glow.intensity=3;}
+          }
+          b.mesh.position.addScaledVector(b.dir,BULLET_SPEED*dt);
+          b.mesh.quaternion.setFromUnitVectors(_cylUp,b.dir);
+          b.box.setFromObject(b.mesh);
+          let hit=false;
+          for(let j=demons.length-1;j>=0;j--){
+            const d=demons[j];
+            d.box.setFromObject(d.mesh);
+            if(b.box.intersectsBox(d.box)){
+              killEnemy(d,j);
+              triggerFlash();
+              hit=true;
+              break;
+            }
+          }
+          if(hit){b.mesh.visible=false;bulletPool.push(b);bullets.splice(i,1);}
+        }
+
+        /* ── Carros ── */
+        for(let i=cars.length-1;i>=0;i--){
+          const c=cars[i];
+          c.mesh.position.z+=gameSpeed*dt;
+          const ud=c.mesh.userData;
+          ud.stateTimer-=dt;
+          if(ud.stateTimer<=0){
+            ud.isMoving=!ud.isMoving;
+            if(ud.isMoving){ud.xSpeed=(Math.random()<0.5?1:-1)*(1.5+Math.random()*2.5);ud.stateTimer=1.0+Math.random()*2.0;}
+            else{ud.stateTimer=0.4+Math.random()*1.4;}
+          }
+          if(ud.isMoving){
+            c.mesh.position.x+=ud.xSpeed*dt;
+            if(c.mesh.position.x>4.2){c.mesh.position.x=4.2;ud.xSpeed=-Math.abs(ud.xSpeed);}
+            if(c.mesh.position.x<-4.2){c.mesh.position.x=-4.2;ud.xSpeed=Math.abs(ud.xSpeed);}
+          }
+          const targetTilt=ud.isMoving?-ud.xSpeed*0.055:0;
+          c.mesh.rotation.z+=(targetTilt-c.mesh.rotation.z)*0.1;
+          c.box.setFromObject(c.mesh);
+          if(c.box.intersectsBox(playerBox)){triggerGameOver();break;}
+          if(c.mesh.position.z>DESPAWN_Z){c.mesh.visible=false;carPool.push(c);cars.splice(i,1);}
+        }
+
+        /* ── Rampas ── */
+        for(let i=ramps.length-1;i>=0;i--){
+          const r=ramps[i];
+          r.mesh.position.z+=gameSpeed*dt;
+          r.box.setFromObject(r.mesh);
+          if(!isJumping&&r.box.intersectsBox(playerBox)){
+            isJumping=true; jumpVelY=JUMP_INITIAL_VEL;
+            turboBoost=gameSpeed*(TURBO_MULT-1);
+            gameSpeed=Math.min(levelCfg.speedMax*TURBO_MULT, gameSpeed*TURBO_MULT);
+            r.mesh.visible=false; r.mesh.position.set(0,-100,0);
+            rampPool.push(r); ramps.splice(i,1);
+          } else if(r.mesh.position.z>DESPAWN_Z){
+            r.mesh.visible=false; rampPool.push(r); ramps.splice(i,1);
+          }
+        }
+
+        /* ── Demonios — IA Cacodemon (PATROL → CHARGE → COOLDOWN) ── */
+        for(let i=demons.length-1;i>=0;i--){
+          const d =demons[i];
+          const ud=d.mesh.userData;
+          ud.age+=dt;
+          if(ud.state==='PATROL'){
+            if(d.mesh.position.distanceTo(player.position)<=DEMON_AGGRO_RADIUS){
+              ud.state      ='CHARGE';
+              ud.chargeTimer=CHARGE_DURATION;
+              ud.chargeDir.subVectors(player.position,d.mesh.position).normalize();
+            }
+          }
+          switch(ud.state){
+            case 'PATROL':{
+              d.mesh.position.z+=gameSpeed*0.35*dt;
+              d.mesh.position.y =ud.baseY
+                +Math.sin(ud.age*1.8+ud.phase)*0.55
+                +Math.sin(ud.age*0.6+ud.phase*0.7)*0.2;
+              d.mesh.position.x =ud.baseX
+                +Math.sin(ud.age*0.8+ud.phase*1.3)*0.9;
+              ud.halo.color.setHex(0xff0000);
+              ud.halo.intensity =1.5+Math.sin(ud.age*3+ud.phase)*0.8;
+              break;
+            }
+            case 'CHARGE':{
+              ud.chargeTimer-=dt;
+              if(ud.chargeTimer<=0){
+                ud.state        ='COOLDOWN';
+                ud.cooldownTimer=MISS_COOLDOWN;
+                ud.cooldownBaseX=d.mesh.position.x;
+                ud.cooldownBaseY=THREE.MathUtils.clamp(d.mesh.position.y,2.0,5.0);
+                break;
+              }
+              d.mesh.position.addScaledVector(ud.chargeDir,28*dt);
+              d.mesh.rotation.z=THREE.MathUtils.clamp(-ud.chargeDir.x*1.0,-1.2,1.2);
+              d.mesh.rotation.x=THREE.MathUtils.clamp(-ud.chargeDir.y*0.6,-0.9,0.9);
+              ud.halo.color.setHex(0xff2200);
+              ud.halo.intensity =5+Math.sin(ud.age*14)*2.5;
+              break;
+            }
+            case 'COOLDOWN':{
+              ud.cooldownTimer-=dt;
+              d.mesh.position.z+=gameSpeed*0.8*dt;
+              d.mesh.position.y =ud.cooldownBaseY+Math.sin(ud.age*1.4+ud.phase)*0.3;
+              d.mesh.position.x =ud.cooldownBaseX+Math.sin(ud.age*0.5+ud.phase)*0.4;
+              d.mesh.rotation.z+=(0-d.mesh.rotation.z)*0.07;
+              d.mesh.rotation.x+=(0-d.mesh.rotation.x)*0.07;
+              ud.halo.color.setHex(0xff8800);
+              ud.halo.intensity =0.8+Math.sin(ud.age*6)*0.5;
+              if(ud.cooldownTimer<=0){
+                recycleEnemy(d,i);
+                continue;
+              }
+              break;
+            }
+          }
+          d.box.setFromObject(d.mesh);
+          if(d.box.intersectsBox(playerBox)){triggerGameOver();break;}
+          if(d.mesh.position.z>DESPAWN_Z){recycleEnemy(d,i);}
+        }
+
+        /* ── Progresión ruta ── */
+        routeProgress=Math.min(1,routeProgress+dt/levelCfg.duration);
+        updateRouteBar(routeProgress);
+        if(routeProgress>=1&&!levelTransitioning){
+          if(currentLevelIdx<levels.length-1) transitionLevel();
+          else triggerVictory();
+        }
+
+        /* ── Carteles de barrios (Nivel 2) ── */
+        if(currentLevelIdx===1){
+          for(const m of barrioMilestones){
+            if(!m.shown&&routeProgress>=m.progress){m.shown=true;spawnBarrioSign(m.name);}
+          }
+        }
+        for(let i=barrioSigns.length-1;i>=0;i--){
+          barrioSigns[i].position.z+=gameSpeed*dt;
+          if(barrioSigns[i].position.z>DESPAWN_Z){scene.remove(barrioSigns[i]);barrioSigns.splice(i,1);}
+        }
+
+        /* ── HUD ── */
+        score+=gameSpeed*dt*0.5;
+        document.getElementById('score').textContent=String(Math.floor(score)).padStart(5,'0');
+        document.getElementById('speed').textContent=Math.floor(gameSpeed*8.3);
+
+      } else {
+        /* post-game: frenar todo */
+        gameSpeed=Math.max(0,gameSpeed-dt*15);
+        roadOffset+=gameSpeed*dt;
+        roadTex.offset.y=(roadOffset*0.02)%1;
+        const rZ=ROAD_SEGMENTS*SEG_LENGTH;
+        roadSegments.forEach(s=>{
+          s.position.z+=gameSpeed*dt;
+          if(s.position.z>SEG_LENGTH) s.position.z-=rZ;
+        });
+        cars.forEach(c=>c.mesh.position.z+=gameSpeed*dt);
+        ramps.forEach(r=>r.mesh.position.z+=gameSpeed*dt);
+        demons.forEach(d=>d.mesh.position.z+=gameSpeed*dt);
+        bullets.forEach(b=>{b.mesh.position.addScaledVector(b.dir,BULLET_SPEED*dt);});
+        document.getElementById('speed').textContent=Math.floor(gameSpeed*8.3);
+
+        if(crashShake>0){
+          camera.position.x=player.position.x+(Math.random()-0.5)*0.4;
+          camera.position.y=8+(Math.random()-0.5)*0.3;
+          crashShake--;
+        } else {
+          camera.position.x+=(player.position.x-camera.position.x)*0.08;
+          camera.position.y+=(CAM_BASE_Y-camera.position.y)*0.07;
+          camera.position.z+=(CAM_BASE_Z-camera.position.z)*0.07;
+        }
+      }
+
+      /* ── Desintegración: corre siempre ── */
+      for(let i=dyingDemons.length-1;i>=0;i--){
+        const d =dyingDemons[i];
+        const ud=d.mesh.userData;
+        ud.deathProgress+=dt/ud.deathDuration;
+        const t   =Math.min(ud.deathProgress,1.0);
+        const ease=t*t*(3-2*t);
+        d.mesh.scale.setScalar(1-ease);
+        d.mesh.rotation.x+=dt*14;
+        d.mesh.rotation.y+=dt*22;
+        d.mesh.rotation.z+=dt*10;
+        d.mesh.traverse(c=>{ if(c.isMesh) c.material.opacity=1-ease; });
+        ud.halo.intensity=(1-ease)*9*Math.abs(Math.sin(ud.deathProgress*28));
+        if(ud.deathProgress>=1){
+          d.mesh.scale.setScalar(1);
+          d.mesh.traverse(c=>{ if(c.isMesh) c.material.opacity=1.0; });
+          ud.halo.intensity=0;
+          d.mesh.visible=false;
+          d.mesh.position.set(0,-100,0);
+          demonPool.push(d);
+          dyingDemons.splice(i,1);
+        }
+      }
+
+      /* ── Lluvia ── */
+      if(rain.visible){
+        const cx=camera.position.x, cz=camera.position.z;
+        for(let i=0;i<RAIN_COUNT;i++){
+          rainPos[i*3+1]-=40*dt;
+          if(rainPos[i*3+1]<-2){
+            rainPos[i*3]  =cx+(Math.random()-0.5)*50;
+            rainPos[i*3+1]=18+Math.random()*12;
+            rainPos[i*3+2]=cz+(Math.random()-0.5)*60-10;
+          }
+        }
+        rainGeo.attributes.position.needsUpdate=true;
+      }
+
+      renderer.render(scene,camera);
+    }
+
+    /* ════ Carga de modelos 3D ════ */
+    function loadAssets(){
+      const loadBar=document.getElementById('load-bar');
+      const TOTAL=6; /* 4 modelos GLB + cielo Nivel 1 + cielo Nivel 2 */
+      return new Promise(resolve=>{
+        const loader=new GLTFLoader();
+        let loaded=0;
+        const done=()=>{ loaded++; loadBar.style.width=Math.round((loaded/TOTAL)*100)+'%'; if(loaded===TOTAL) resolve(); };
+
+        loader.load('./models/moto.glb', gltf=>{
+          const model=gltf.scene;
+          model.scale.setScalar(MOTO_SCALE);
+          model.rotation.y=MOTO_ROT_Y;
+          model.position.y=MOTO_OFFSET_Y;
+          model.traverse(c=>{ if(c.isMesh) c.castShadow=true; });
+          player.remove(_playerPH);
+          player.add(model);
+          done();
+        }, undefined, err=>{ console.warn('moto.glb no cargó — usando placeholder:',err); done(); });
+
+        loader.load('./models/cacodemon.glb', gltf=>{
+          cacodemonTemplate=gltf.scene;
+          done();
+        }, undefined, err=>{ console.warn('cacodemon.glb no cargó — usando esfera:',err); done(); });
+
+        loader.load('./models/redcar.glb', gltf=>{
+          redCarTemplate=gltf.scene;
+          done();
+        }, undefined, err=>{ console.warn('redcar.glb no cargó — usando caja roja:',err); done(); });
+
+        loader.load('./models/rampa.glb', gltf=>{
+          loadedRampModel=gltf.scene;
+          done();
+        }, undefined, err=>{ console.warn('rampa.glb no cargó — usando geometría de fallback:',err); done(); });
+
+        /* Skybox Nivel 1: cielo soleado */
+        new THREE.TextureLoader().load('./models/cielo-soleado.jpg', tex=>{
+          skyboxTexture=tex;
+          scene.background=tex;
+          done();
+        }, undefined, err=>{ console.warn('cielo-soleado.jpg no cargó — usando color azul de fallback:',err); done(); });
+
+        /* Skybox Nivel 2: cielo con lluvia/noche */
+        new THREE.TextureLoader().load('./models/cielo-nivel2.jpg', tex=>{
+          skyboxLevel2Texture=tex;
+          done();
+        }, undefined, err=>{ console.warn('cielo-nivel2.jpg no cargó — usando color gris de fallback:',err); done(); });
+      });
+    }
+
+    loadAssets().then(()=>{
+      for(let _i=0;_i<10;_i++){
+        const pd={mesh:makeDemon(),box:new THREE.Box3()};
+        pd.mesh.visible=false; pd.mesh.position.set(0,-100,0);
+        scene.add(pd.mesh); demonPool.push(pd);
+      }
+      document.getElementById('loading').style.display='none';
+      animate();
+    });
+
+    window.addEventListener('resize',()=>{
+      camera.aspect=innerWidth/innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(innerWidth,innerHeight);
+    });
+  </script>
+</body>
+</html>
